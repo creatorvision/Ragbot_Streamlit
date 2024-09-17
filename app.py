@@ -4,7 +4,7 @@ import pathlib
 import streamlit as st
 from rag.rag import generate_answer
 
-st.title("Q&A RAG Model BOT")
+st.title("RAGBot - Your Intelligent Friend")
 st.header("\n A Simplified Approach")
 
 if 'selection' not in st.session_state:
