@@ -51,13 +51,16 @@ def init_chromadb():
     # Initialize ChromaDB client with persistent storage
     client = chromadb.Client(Settings(persist_directory=CHROMA_DB_FOLDER))
     
-    # Try to get an existing collection or create a new one if it doesn't exist
+    # Get the existing collection or create a new one
+    collection = None
     try:
+        # Try to retrieve the collection if it exists
         collection = client.get_collection("document_embeddings")
         st.info("Using existing 'document_embeddings' collection.")
-    except chromadb.errors.CollectionNotFoundError:
+    except Exception as e:
+        # If retrieval fails, create a new collection
+        st.info("Creating a new 'document_embeddings' collection.")
         collection = client.create_collection("document_embeddings")
-        st.success("Created a new 'document_embeddings' collection.")
     
     return client, collection
 
@@ -83,8 +86,8 @@ def compute_embeddings_and_save_to_chromadb(docs, doc_ids, collection):
         
         st.success("Embeddings saved successfully to ChromaDB.")
         
-        # Persist the ChromaDB for future sessions
-        collection.persist()
+        # Persistence happens at the client level
+        collection.client.persist()  # Ensure persistence of the entire ChromaDB
     except Exception as e:
         st.error(f"Error saving embeddings to ChromaDB: {e}")
 
