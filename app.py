@@ -10,15 +10,33 @@ from langchain.vectorstores import Chroma
 from langchain.embeddings import HuggingFaceEmbeddings
 from transformers import pipeline
 
-# Set up your local folder to store uploaded documents
+# Set up your local folder to store uploaded documents and ChromaDB
 UPLOAD_FOLDER = 'uploaded_docs/'
+CHROMA_DB_FOLDER = 'chroma_db/'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(CHROMA_DB_FOLDER, exist_ok=True)
+
+# Define constants for chunking
+CHUNK_SIZE = 500  # Max characters per chunk
+CHUNK_OVERLAP = 100  # Overlap between chunks
 
 # Function to clean text
 def clean_text(text):
     text = re.sub(r'\s+', ' ', text)  # Remove excessive whitespace
     text = re.sub(r'[^A-Za-z0-9\s.,?!]', '', text)  # Keep only text and punctuation
     return text.strip()
+
+# Function to split a document into smaller chunks with overlap
+def chunk_text(text, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
+    """Split the document text into overlapping chunks."""
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        chunk = text[start:end]
+        chunks.append(chunk)
+        start += chunk_size - chunk_overlap  # Move start with overlap
+    return chunks
 
 # Function to extract text from PDF
 def extract_text_from_pdf(file_path):
@@ -28,10 +46,10 @@ def extract_text_from_pdf(file_path):
         text += page.get_text()
     return clean_text(text)
 
-# Function to initialize ChromaDB and collection
+# Function to initialize ChromaDB and collection with persistence
 def init_chromadb():
-    # Initialize ChromaDB client
-    client = chromadb.Client(Settings())
+    # Initialize ChromaDB client with persistent storage
+    client = chromadb.Client(Settings(persist_directory=CHROMA_DB_FOLDER))
     
     # Try to get an existing collection or create a new one if it doesn't exist
     try:
@@ -46,20 +64,27 @@ def init_chromadb():
 # Function to compute and save embeddings to ChromaDB
 def compute_embeddings_and_save_to_chromadb(docs, doc_ids, collection):
     try:
-        # Initialize the SentenceTransformer embedding model
+        # Initialize the lightweight SentenceTransformer embedding model
         embedder = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
         
-        # Compute embeddings for each document and convert to list
-        embeddings = [embedder.encode(doc).tolist() for doc in docs]  # Convert ndarray to list
+        for i, doc in enumerate(docs):
+            chunks = chunk_text(doc)  # Split document into chunks
+            
+            # Compute embeddings for each chunk and convert to list
+            embeddings = [embedder.encode(chunk).tolist() for chunk in chunks]  # Convert ndarray to list
+            
+            # Add chunks and embeddings to the ChromaDB collection
+            for j, embedding in enumerate(embeddings):
+                collection.add(
+                    documents=[chunks[j]], 
+                    embeddings=[embedding],  # Ensure embeddings are Python lists
+                    ids=[f"{doc_ids[i]}_chunk_{j}"]  # Use chunk ID for uniqueness
+                )
         
-        # Add documents and embeddings to the ChromaDB collection
-        for i, embedding in enumerate(embeddings):
-            collection.add(
-                documents=[docs[i]], 
-                embeddings=[embedding],  # Ensure embeddings are Python lists
-                ids=[doc_ids[i]]
-            )
         st.success("Embeddings saved successfully to ChromaDB.")
+        
+        # Persist the ChromaDB for future sessions
+        collection.persist()
     except Exception as e:
         st.error(f"Error saving embeddings to ChromaDB: {e}")
 
@@ -70,7 +95,7 @@ def load_rag_model():
         embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
         
         # Load the ChromaDB vector store for retrieving relevant documents
-        vector_store = Chroma("document_embeddings", embeddings)
+        vector_store = Chroma("document_embeddings", embeddings, persist_directory=CHROMA_DB_FOLDER)
         
         # Initialize a question-answering pipeline using the FLAN-T5 model
         qa_pipeline = pipeline("text2text-generation", model="google/flan-t5-small", tokenizer="google/flan-t5-small")
@@ -81,7 +106,7 @@ def load_rag_model():
         return None, None
 
 # Streamlit UI
-st.title("Document Uploader & Cleaner with RAG")
+st.title("Document Uploader & Cleaner with RAG and Chunking")
 
 # Upload Section
 uploaded_files = st.file_uploader("Upload PDFs or Text Files", type=["pdf", "txt"], accept_multiple_files=True)
@@ -128,9 +153,10 @@ if uploaded_files:
         try:
             qa_pipeline, vector_store = load_rag_model()
             if qa_pipeline and vector_store:
-                # Perform a similarity search and retrieve documents
-                docs_retrieved = vector_store.similarity_search(question)
-                # Combine the retrieved documents for the context
+                # Perform a similarity search and retrieve the top 3 most relevant chunks
+                docs_retrieved = vector_store.similarity_search(question, k=3)  # Limit to 3 docs for speed
+                
+                # Combine the retrieved chunks for the context
                 context = ' '.join([doc.page_content for doc in docs_retrieved])
                 
                 # Generate the answer using the QA pipeline
