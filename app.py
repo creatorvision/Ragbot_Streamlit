@@ -23,7 +23,7 @@ emp = st.empty()
 vari = emp.selectbox(
     key = "Options",
     label = "Please select the option for query running:",
-    options = ("Wikipedia", "Research Paper")
+    options = ("Wikipedia", "Uploaded File/ Knowledge base")
 )
 
 if st.button("Select"):
@@ -72,7 +72,7 @@ def main(selection):
 
                 st.success("Data processing complete!")
                 st.markdown(f"###### {answer['result']}")
-    elif selection == "Research Paper":
+    elif selection == "Uploaded File/ Knowledge base":
         research_query = research_choice()
 
         if research_query is not None:
