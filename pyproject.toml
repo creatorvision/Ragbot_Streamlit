@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "Cubot"
+version = "0.1.0"
+description = "RAG Simplified Explained"
+authors = ["Shivang Gupta <creatorvision03@gmail.com>"]
+readme = "README.md"
+packages = [{include = "rag"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+langchain = "^0.2.1"
+langchain_openai = "^0.1.0"
+langchain_community = "^0.2.16"  
+streamlit = "^1.35.0"
+python-dotenv = "^1.0.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
